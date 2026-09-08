@@ -120,6 +120,16 @@ static void raspi_peripherals_base_init(Object *obj)
     object_initialize_child(obj, "bcm2835-otp", &s->otp,
                             TYPE_BCM2835_OTP);
 
+    /* Power management channel (mailbox channel 0) */
+    object_initialize_child(obj, "mbox-power", &s->mbox_power,
+                            TYPE_BCM2835_MBOX_POWER);
+
+    /* VCHIQ peer (mailbox channel 3 + doorbells) */
+    object_initialize_child(obj, "mbox-vchiq", &s->mbox_vchiq,
+                            TYPE_BCM2835_MBOX_VCHIQ);
+    object_property_add_const_link(OBJECT(&s->mbox_vchiq), "dma-mr",
+                                   OBJECT(&s->gpu_bus_mr));
+
     /* Property channel */
     object_initialize_child(obj, "property", &s->property,
                             TYPE_BCM2835_PROPERTY);
@@ -387,6 +397,38 @@ void bcm_soc_peripherals_common_realize(DeviceState *dev, Error **errp)
 
     memory_region_add_subregion(&s->peri_mr, OTP_OFFSET,
                 sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->otp), 0));
+
+    /* Power management channel (mailbox channel 0) */
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->mbox_power), errp)) {
+        return;
+    }
+
+    memory_region_add_subregion(&s->mbox_mr,
+                MBOX_CHAN_POWER << MBOX_AS_CHAN_SHIFT,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->mbox_power), 0));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->mbox_power), 0,
+                      qdev_get_gpio_in(DEVICE(&s->mboxes), MBOX_CHAN_POWER));
+
+    /* VCHIQ peer (mailbox channel 3 + doorbells) */
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->mbox_vchiq), errp)) {
+        return;
+    }
+
+    memory_region_add_subregion(&s->mbox_mr,
+                MBOX_CHAN_VCHIQ << MBOX_AS_CHAN_SHIFT,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->mbox_vchiq), 0));
+    /*
+     * The doorbells live inside the mailbox device's own 0x400
+     * window, so overlay them at a higher priority rather than
+     * threading them through bcm2835_mbox.
+     */
+    memory_region_add_subregion_overlap(&s->peri_mr,
+                ARMCTRL_0_SBM_OFFSET + 0x40,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->mbox_vchiq), 1),
+                1);
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->mbox_vchiq), 0,
+                qdev_get_gpio_in_named(DEVICE(&s->ic), BCM2835_IC_ARM_IRQ,
+                                       INTERRUPT_ARM_DOORBELL_0));
 
     /* Property channel */
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->property), errp)) {
