@@ -53,17 +53,33 @@
 
 #define BCM2708_DMA_CS_RW_MASK  0x30ff0001 /* All RW bits in DMA_CS */
 
+/* Upper bound on control blocks walked in one go; see the chain loop. */
+#define BCM2835_DMA_MAX_CBS 4096
+
 static void bcm2835_dma_update(BCM2835DMAState *s, unsigned c)
 {
     BCM2835DMAChan *ch = &s->chan[c];
-    uint32_t data, xlen, xlen_td, ylen;
+    uint32_t xlen, xlen_td, ylen;
     int16_t dst_stride, src_stride;
+    unsigned cb_count;
 
     if (!(s->enable & (1 << c))) {
         return;
     }
 
-    while ((s->enable & (1 << c)) && (ch->conblk_ad != 0)) {
+    /*
+     * A control block may chain to another, and nothing stops a guest
+     * building a ring. Bound the walk so a malformed chain cannot wedge
+     * QEMU; a real transfer is a handful of blocks.
+     */
+    for (cb_count = 0; (s->enable & (1 << c)) && (ch->conblk_ad != 0);
+         cb_count++) {
+        if (cb_count >= BCM2835_DMA_MAX_CBS) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: control block chain too long, aborting\n",
+                          __func__);
+            break;
+        }
         /* CB fetch */
         ch->ti = ldl_le_phys(&s->dma_as, ch->conblk_ad);
         ch->source_ad = ldl_le_phys(&s->dma_as, ch->conblk_ad + 4);
@@ -89,27 +105,39 @@ static void bcm2835_dma_update(BCM2835DMAState *s, unsigned c)
         while (ylen != 0) {
             /* Normal transfer mode */
             while (xlen != 0) {
+                /*
+                 * Transfer lengths are counted in bytes and a guest is free
+                 * to program one that is not a multiple of four. Moving a
+                 * whole word regardless and subtracting four made xlen wrap
+                 * round, so the loop ran about 2^30 times, hung QEMU inside
+                 * the guest's MMIO write and wrote far past the end of the
+                 * destination on the way. Move the odd tail as bytes.
+                 */
+                unsigned chunk = xlen < 4 ? xlen : 4;
+                uint8_t buf[4] = { 0, 0, 0, 0 };
+
                 if (ch->ti & BCM2708_DMA_S_IGNORE) {
                     /* Ignore reads */
-                    data = 0;
                 } else {
-                    data = ldl_le_phys(&s->dma_as, ch->source_ad);
+                    address_space_read(&s->dma_as, ch->source_ad,
+                                       MEMTXATTRS_UNSPECIFIED, buf, chunk);
                 }
                 if (ch->ti & BCM2708_DMA_S_INC) {
-                    ch->source_ad += 4;
+                    ch->source_ad += chunk;
                 }
 
                 if (ch->ti & BCM2708_DMA_D_IGNORE) {
                     /* Ignore writes */
                 } else {
-                    stl_le_phys(&s->dma_as, ch->dest_ad, data);
+                    address_space_write(&s->dma_as, ch->dest_ad,
+                                        MEMTXATTRS_UNSPECIFIED, buf, chunk);
                 }
                 if (ch->ti & BCM2708_DMA_D_INC) {
-                    ch->dest_ad += 4;
+                    ch->dest_ad += chunk;
                 }
 
                 /* update remaining transfer length */
-                xlen -= 4;
+                xlen -= chunk;
                 if (ch->ti & BCM2708_DMA_TDMODE) {
                     ch->txfr_len = (ylen << 16) | xlen;
                 } else {
