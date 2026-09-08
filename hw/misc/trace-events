@@ -409,3 +409,10 @@ ivshmem_flat_interrupt_peer(uint16_t peer_id, uint16_t vector_id) "Interrupting 
 i2c_echo_event(const char *id, const char *event) "%s: %s"
 i2c_echo_recv(const char *id, uint8_t data) "%s: recv 0x%02" PRIx8
 i2c_echo_send(const char *id, uint8_t data) "%s: send 0x%02" PRIx8
+
+# bcm2835_mbox_vchiq.c
+bcm2835_vchiq_handover(uint32_t base, uint32_t zero_size, uint32_t shared, uint32_t first, uint32_t last) "slot zero 0x%08x size %u shared %u master slots %u..%u"
+bcm2835_vchiq_tx(uint32_t type, uint32_t msgid, uint32_t size, uint32_t hdr) "tx type %u msgid 0x%08x size %u at 0x%08x"
+bcm2835_vchiq_rx(uint32_t type, uint32_t msgid, uint32_t size, uint32_t hdr) "rx type %u msgid 0x%08x size %u at 0x%08x"
+bcm2835_vchiq_doorbell_read(uint32_t val) "doorbell0 read 0x%x"
+bcm2835_vchiq_doorbell_write(uint32_t val) "doorbell2 write 0x%x"
