@@ -156,8 +156,19 @@ static void dwc2_frame_boundary(void *opaque)
 
     /* Frame boundary, so do EOF stuff here */
 
-    /* Increment frame number */
-    frcnt = (uint16_t)((now - s->sof_time) / s->fi);
+    /*
+     * Increment frame number.
+     *
+     * s->fi is the frame interval expressed in USB bit times
+     * (USB_FRMINTVL - 1), not in nanoseconds, so dividing a nanosecond
+     * delta by it counted ~83 frames per frame at full speed and wrapped
+     * HFNUM's 14 bit frame number roughly every 0.2s instead of every 16s.
+     * The elapsed whole frames are the delta divided by the frame time --
+     * the same value dwc2_sof() adds to sof_time. (Compare
+     * dwc2_get_frame_remaining(), which converts ns to bit times with
+     * s->usb_bit_time before comparing against s->fi.)
+     */
+    frcnt = (uint16_t)((now - s->sof_time) / s->usb_frame_time);
     s->frame_number = (s->frame_number + frcnt) & 0xffff;
     s->hfnum = s->frame_number & HFNUM_MAX_FRNUM;
 
@@ -457,7 +468,14 @@ static void dwc2_attach(USBPort *port)
     s->fi = USB_FRMINTVL - 1;
     s->hprt0 |= HPRT0_CONNDET | HPRT0_CONNSTS;
 
-    dwc2_bus_start(s);
+    /*
+     * Do NOT start SOFs here. Real silicon only frames the bus once the
+     * host has reset and enabled the port; starting at plug-in floods a
+     * guest with SOF interrupts throughout enumeration -- and, if a device
+     * is present at power-on, from the first moment its driver unmasks
+     * interrupts. dwc2_bus_start() is called from the HPRT0 write handler
+     * when the port becomes enabled instead.
+     */
     dwc2_raise_global_irq(s, GINTSTS_PRTINT);
 }
 
@@ -878,6 +896,8 @@ static void dwc2_hreg0_write(void *ptr, hwaddr addr, int index, uint64_t val,
     uint32_t *mmio;
     uint32_t tval, told, old;
     int prst = 0;
+    int pena = 0;
+    int hmflg = 0;
     int iflg = 0;
 
     if (addr < HCFG || addr > HPRT0) {
@@ -900,6 +920,7 @@ static void dwc2_hreg0_write(void *ptr, hwaddr addr, int index, uint64_t val,
         return;
     case HAINTMSK:
         val &= 0xffff;
+        hmflg = 1;
         break;
     case HPRT0:
         /* don't allow clearing of read-only bits */
@@ -929,6 +950,12 @@ static void dwc2_hreg0_write(void *ptr, hwaddr addr, int index, uint64_t val,
                 prst = 1;
             }
         }
+        /* Frame the bus only while the port is enabled. */
+        if ((val & HPRT0_ENA) && !(old & HPRT0_ENA)) {
+            pena = 1;
+        } else if (!(val & HPRT0_ENA) && (old & HPRT0_ENA)) {
+            pena = -1;
+        }
         if (val & (HPRT0_OVRCURRCHG | HPRT0_ENACHG | HPRT0_CONNDET)) {
             iflg = 1;
         } else {
@@ -950,6 +977,28 @@ static void dwc2_hreg0_write(void *ptr, hwaddr addr, int index, uint64_t val,
     }
 
     *mmio = val;
+
+    if (pena > 0) {
+        dwc2_bus_start(s);
+    } else if (pena < 0) {
+        dwc2_bus_stop(s);
+    }
+
+    if (hmflg) {
+        /*
+         * GINTSTS.HCHINT is a read-only summary of HAINT & HAINTMSK, so
+         * masking a channel here can clear it and unmasking one can assert
+         * it. It was only re-evaluated when HAINT changed, which left a
+         * guest that quietens a channel by clearing its HAINTMSK bit
+         * looping forever: HCHINT stayed asserted and the write-1-to-clear
+         * path correctly refuses to clear a read-only bit.
+         */
+        if (s->haint & s->haintmsk) {
+            dwc2_raise_global_irq(s, GINTSTS_HCHINT);
+        } else {
+            dwc2_lower_global_irq(s, GINTSTS_HCHINT);
+        }
+    }
 
     if (iflg > 0) {
         trace_usb_dwc2_hreg0_action("enable PRTINT");
