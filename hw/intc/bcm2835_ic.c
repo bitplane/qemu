@@ -173,8 +173,20 @@ static const MemoryRegionOps bcm2835_ic_ops = {
     .read = bcm2835_ic_read,
     .write = bcm2835_ic_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
-    .valid.min_access_size = 4,
+    /*
+     * The registers are all 32 bit, but the peripheral answers narrower
+     * reads on real silicon and guests rely on it: RISC OS dispatches
+     * interrupts with "LDRB a1, [a2, #IRQ_PENDB]" to look at just the low
+     * eight bits of the basic pending register (see the BCM2835 HAL,
+     * Sources/HAL/HAL_BCM2835/s/Interrupts). Rejecting the access turns
+     * every interrupt into an external data abort inside the guest's own
+     * IRQ handler. Keep .impl at 4 so the byte is extracted from a normal
+     * word read of the device.
+     */
+    .valid.min_access_size = 1,
     .valid.max_access_size = 4,
+    .impl.min_access_size = 4,
+    .impl.max_access_size = 4,
 };
 
 static void bcm2835_ic_reset(DeviceState *d)

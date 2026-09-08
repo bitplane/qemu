@@ -211,6 +211,20 @@ static const MemoryRegionOps bcm2835_i2c_ops = {
     .write = bcm2835_i2c_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
+        /*
+         * The BSC data FIFO is a byte-wide port behind a 32 bit register,
+         * and guests drive it a byte at a time on real silicon. RISC OS
+         * does exactly that -- "STRB a1, [v1, #IIC_FIFO]" to fill it and
+         * "LDRB a1, [v1, #IIC_FIFO]" to drain it (Sources/HAL/HAL_BCM2835/
+         * s/IIC, with IIC_FIFO = &10) -- and rejecting the access aborts
+         * the guest during IIC initialisation. Keep .impl at 4: this
+         * device transfers one byte per FIFO access either way, so the
+         * widened access carries exactly the same data.
+         */
+        .min_access_size = 1,
+        .max_access_size = 4,
+    },
+    .impl = {
         .min_access_size = 4,
         .max_access_size = 4,
     },
