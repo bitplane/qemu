@@ -1023,6 +1023,7 @@ F: include/hw/arm/rasp*
 F: include/hw/*/bcm283*
 F: docs/system/arm/raspi.rst
 F: tests/functional/arm/test_raspi2.py
+F: tests/qtest/bcm2835-power-test.c
 F: tests/functional/aarch64/test_raspi*.py
 
 Real View

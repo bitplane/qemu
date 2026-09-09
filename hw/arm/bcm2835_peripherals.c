@@ -120,6 +120,9 @@ static void raspi_peripherals_base_init(Object *obj)
     object_initialize_child(obj, "bcm2835-otp", &s->otp,
                             TYPE_BCM2835_OTP);
 
+    object_initialize_child(obj, "mbox-power", &s->mbox_power,
+                            TYPE_BCM2835_MBOX_POWER);
+
     /* Property channel */
     object_initialize_child(obj, "property", &s->property,
                             TYPE_BCM2835_PROPERTY);
@@ -391,6 +394,15 @@ void bcm_soc_peripherals_common_realize(DeviceState *dev, Error **errp)
                 sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->otp), 0));
 
     /* Property channel */
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->mbox_power), errp)) {
+        return;
+    }
+    memory_region_add_subregion(&s->mbox_mr,
+                MBOX_CHAN_POWER << MBOX_AS_CHAN_SHIFT,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->mbox_power), 0));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->mbox_power), 0,
+                      qdev_get_gpio_in(DEVICE(&s->mboxes), MBOX_CHAN_POWER));
+
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->property), errp)) {
         return;
     }
