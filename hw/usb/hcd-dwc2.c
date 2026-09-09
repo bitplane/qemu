@@ -951,6 +951,14 @@ static void dwc2_hreg0_write(void *ptr, hwaddr addr, int index, uint64_t val,
 
     *mmio = val;
 
+    if (addr == HAINTMSK) {
+        if (s->haint & s->haintmsk) {
+            dwc2_raise_global_irq(s, GINTSTS_HCHINT);
+        } else {
+            dwc2_lower_global_irq(s, GINTSTS_HCHINT);
+        }
+    }
+
     if (iflg > 0) {
         trace_usb_dwc2_hreg0_action("enable PRTINT");
         dwc2_raise_global_irq(s, GINTSTS_PRTINT);
