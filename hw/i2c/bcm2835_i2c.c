@@ -206,14 +206,24 @@ static void bcm2835_i2c_write(void *opaque, hwaddr addr,
     }
 }
 
+static bool bcm2835_i2c_access_valid(void *opaque, hwaddr addr,
+                                    unsigned size, bool is_write,
+                                    MemTxAttrs attrs)
+{
+    return size == 4 || (size == 1 && addr == BCM2835_I2C_FIFO);
+}
+
 static const MemoryRegionOps bcm2835_i2c_ops = {
     .read = bcm2835_i2c_read,
     .write = bcm2835_i2c_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
-        .min_access_size = 4,
+        .min_access_size = 1,
         .max_access_size = 4,
+        .accepts = bcm2835_i2c_access_valid,
     },
+    .impl.min_access_size = 4,
+    .impl.max_access_size = 4,
 };
 
 static void bcm2835_i2c_realize(DeviceState *dev, Error **errp)

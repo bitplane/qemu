@@ -46,10 +46,20 @@ static void bcm2835_i2c_init_transfer(uint32_t base_addr, bool read)
            BCM2835_I2C_C_ST | BCM2835_I2C_C_CLEAR | interrupt | read);
 }
 
+static void fifo_write(uint32_t addr, uint8_t value, bool byte_access)
+{
+    if (byte_access) {
+        writeb(addr, value);
+    } else {
+        writel(addr, value);
+    }
+}
+
 static void test_i2c_read_write(gconstpointer data)
 {
     uint32_t i2cdata;
-    intptr_t index = (intptr_t) data;
+    intptr_t index = (intptr_t) data & 0xff;
+    bool byte_access = (intptr_t) data & 0x100;
     uint32_t base_addr = bsc_base_addrs[index];
 
     /* Write to TMP105 register */
@@ -58,9 +68,9 @@ static void test_i2c_read_write(gconstpointer data)
 
     bcm2835_i2c_init_transfer(base_addr, 0);
 
-    writel(base_addr + BCM2835_I2C_FIFO, TMP105_REG_T_HIGH);
-    writel(base_addr + BCM2835_I2C_FIFO, 0xde);
-    writel(base_addr + BCM2835_I2C_FIFO, 0xad);
+    fifo_write(base_addr + BCM2835_I2C_FIFO, TMP105_REG_T_HIGH, byte_access);
+    fifo_write(base_addr + BCM2835_I2C_FIFO, 0xde, byte_access);
+    fifo_write(base_addr + BCM2835_I2C_FIFO, 0xad, byte_access);
 
     /* Clear flags */
     writel(base_addr + BCM2835_I2C_S, BCM2835_I2C_S_DONE | BCM2835_I2C_S_ERR |
@@ -72,15 +82,17 @@ static void test_i2c_read_write(gconstpointer data)
 
     bcm2835_i2c_init_transfer(base_addr, 0);
 
-    writel(base_addr + BCM2835_I2C_FIFO, TMP105_REG_T_HIGH);
+    fifo_write(base_addr + BCM2835_I2C_FIFO, TMP105_REG_T_HIGH, byte_access);
 
     writel(base_addr + BCM2835_I2C_DLEN, 2);
     bcm2835_i2c_init_transfer(base_addr, 1);
 
-    i2cdata = readl(base_addr + BCM2835_I2C_FIFO);
+    i2cdata = byte_access ? readb(base_addr + BCM2835_I2C_FIFO) :
+                           readl(base_addr + BCM2835_I2C_FIFO);
     g_assert_cmpint(i2cdata, ==, 0xde);
 
-    i2cdata = readl(base_addr + BCM2835_I2C_FIFO);
+    i2cdata = byte_access ? readb(base_addr + BCM2835_I2C_FIFO) :
+                           readl(base_addr + BCM2835_I2C_FIFO);
     g_assert_cmpint(i2cdata, ==, 0xa0);
 
     /* Clear flags */
@@ -101,6 +113,13 @@ int main(int argc, char **argv)
         g_strdup_printf("/bcm2835/bcm2835-i2c%d/read_write", i);
         qtest_add_data_func(test_name, (void *)(intptr_t) i,
                             test_i2c_read_write);
+    }
+
+    for (i = 0; i < 3; i++) {
+        g_autofree char *test_name =
+            g_strdup_printf("/bcm2835/bcm2835-i2c%d/byte_fifo", i);
+        qtest_add_data_func(test_name, (void *)(intptr_t)(i | 0x100),
+                           test_i2c_read_write);
     }
 
     /* Run I2C tests with TMP105 slaves on all three buses */
