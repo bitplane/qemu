@@ -83,7 +83,7 @@ static uint64_t bcm2835_ic_read(void *opaque, hwaddr offset, unsigned size)
     uint64_t gpu_pending = s->gpu_irq_level & s->gpu_irq_enable;
     int i;
 
-    switch (offset) {
+    switch (offset & ~3) {
     case IRQ_PENDING_BASIC:
         /* bits 0-7: ARM irqs */
         res = s->arm_irq_level & s->arm_irq_enable;
@@ -130,7 +130,7 @@ static uint64_t bcm2835_ic_read(void *opaque, hwaddr offset, unsigned size)
         return 0;
     }
 
-    return res;
+    return res >> ((offset & 3) * 8);
 }
 
 static void bcm2835_ic_write(void *opaque, hwaddr offset, uint64_t val,
@@ -169,12 +169,22 @@ static void bcm2835_ic_write(void *opaque, hwaddr offset, uint64_t val,
     bcm2835_ic_update(s);
 }
 
+static bool bcm2835_ic_access_valid(void *opaque, hwaddr addr,
+                                   unsigned size, bool is_write,
+                                   MemTxAttrs attrs)
+{
+    return size == 4 || (!is_write && size == 1);
+}
+
 static const MemoryRegionOps bcm2835_ic_ops = {
     .read = bcm2835_ic_read,
     .write = bcm2835_ic_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .valid.min_access_size = 4,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid.min_access_size = 1,
     .valid.max_access_size = 4,
+    .valid.accepts = bcm2835_ic_access_valid,
+    .impl.min_access_size = 1,
+    .impl.max_access_size = 4,
 };
 
 static void bcm2835_ic_reset(DeviceState *d)

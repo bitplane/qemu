@@ -91,6 +91,10 @@ static void bcm2835_dma_test_interrupt(int dma_c, int irq_line)
 
     gpu_pending1 = readl(RASPI3_IC_BASE + IRQ_PENDING_1);
     g_assert_cmpint(gpu_pending1, ==, 1 << gpu_irq_line);
+    g_assert_cmphex(readb(RASPI3_IC_BASE + IRQ_PENDING_BASIC), ==, 0);
+    g_assert_cmphex(readb(RASPI3_IC_BASE + IRQ_PENDING_BASIC + 1), ==, 1);
+    g_assert_cmphex(readb(RASPI3_IC_BASE + IRQ_PENDING_1 + gpu_irq_line / 8),
+                    ==, 1 << (gpu_irq_line % 8));
 
     /* Clean up, clear interrupt: */
     writel(dma_base + BCM2708_DMA_CS, BCM2708_DMA_INT);
