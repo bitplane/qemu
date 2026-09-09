@@ -457,7 +457,6 @@ static void dwc2_attach(USBPort *port)
     s->fi = USB_FRMINTVL - 1;
     s->hprt0 |= HPRT0_CONNDET | HPRT0_CONNSTS;
 
-    dwc2_bus_start(s);
     dwc2_raise_global_irq(s, GINTSTS_PRTINT);
 }
 
@@ -950,6 +949,14 @@ static void dwc2_hreg0_write(void *ptr, hwaddr addr, int index, uint64_t val,
     }
 
     *mmio = val;
+
+    if (addr == HPRT0) {
+        if (!(val & HPRT0_ENA)) {
+            dwc2_bus_stop(s);
+        } else if (prst || !(old & HPRT0_ENA)) {
+            dwc2_bus_start(s);
+        }
+    }
 
     if (iflg > 0) {
         trace_usb_dwc2_hreg0_action("enable PRTINT");
