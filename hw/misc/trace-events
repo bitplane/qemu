@@ -460,3 +460,10 @@ launch_update_write(void) ""
 vmlaunch_reset_enter(void) ""
 vm_launchupdate_finalize(void) ""
 restore_host_x86_igvm(void) ""
+
+# bcm2835_mbox_vchiq.c
+bcm2835_vchiq_handover(uint32_t base, uint32_t zero_size, uint32_t shared, uint32_t first, uint32_t last) "slot zero 0x%08x size %u shared %u master slots %u..%u"
+bcm2835_vchiq_tx(uint32_t type, uint32_t msgid, uint32_t size, uint32_t hdr) "tx type %u msgid 0x%08x size %u at 0x%08x"
+bcm2835_vchiq_rx(uint32_t type, uint32_t msgid, uint32_t size, uint32_t hdr) "rx type %u msgid 0x%08x size %u at 0x%08x"
+bcm2835_vchiq_doorbell_read(uint32_t val) "doorbell0 read 0x%x"
+bcm2835_vchiq_doorbell_write(uint32_t val) "doorbell2 write 0x%x"
