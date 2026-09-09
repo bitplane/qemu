@@ -137,9 +137,9 @@ static void dwc2_eof_timer(DWC2State *s)
 }
 
 /* Set a timer for EOF and generate SOF event */
-static void dwc2_sof(DWC2State *s)
+static void dwc2_sof(DWC2State *s, uint64_t frames)
 {
-    s->sof_time += s->usb_frame_time;
+    s->sof_time += frames * s->usb_frame_time;
     trace_usb_dwc2_sof(s->sof_time);
     dwc2_eof_timer(s);
     dwc2_raise_global_irq(s, GINTSTS_SOF);
@@ -150,19 +150,19 @@ static void dwc2_frame_boundary(void *opaque)
 {
     DWC2State *s = opaque;
     int64_t now;
-    uint16_t frcnt;
+    uint64_t frcnt;
 
     now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
     /* Frame boundary, so do EOF stuff here */
 
     /* Increment frame number */
-    frcnt = (uint16_t)((now - s->sof_time) / s->fi);
+    frcnt = (now - s->sof_time) / s->usb_frame_time;
     s->frame_number = (s->frame_number + frcnt) & 0xffff;
     s->hfnum = s->frame_number & HFNUM_MAX_FRNUM;
 
     /* Do SOF stuff here */
-    dwc2_sof(s);
+    dwc2_sof(s, frcnt);
 }
 
 /* Start sending SOF tokens on the USB bus */
