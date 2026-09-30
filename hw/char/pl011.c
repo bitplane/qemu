@@ -473,6 +473,8 @@ static void pl011_write(void *opaque, hwaddr offset,
         }
         s->lcr = value;
         pl011_set_read_trigger(s);
+        /* FIFO mode changes alter the backend input capacity. */
+        qemu_chr_fe_accept_input(&s->chr);
         break;
     case 12: /* UARTCR */
         /* ??? Need to implement the enable bit.  */
